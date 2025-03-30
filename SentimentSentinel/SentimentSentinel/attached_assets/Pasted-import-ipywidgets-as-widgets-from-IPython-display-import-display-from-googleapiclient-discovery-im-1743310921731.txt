@@ -1,0 +1,171 @@
+import ipywidgets as widgets
+from IPython.display import display
+from googleapiclient.discovery import build
+import pandas as pd
+import time
+import matplotlib.pyplot as plt
+from google import genai  # Import the Google Gemini client
+import random
+
+# Access API_KEY and CSE_ID from Google Colab secrets
+API_KEY = userdata.get('API_KEY')  # Retrieve your Google API Key
+CSE_ID = userdata.get('CSE_ID')    # Retrieve your Custom Search Engine ID
+
+# Create a text box for inputting queries
+query_box = widgets.Textarea(
+    value="Temasek,ESG,DEI",
+    placeholder='Enter your queries here, separated by new lines...',
+    description='Queries/Keyword/Ticker:',
+    disabled=False,
+    layout=widgets.Layout(width='100%', height='150px')
+)
+
+# Create a button to trigger the search
+search_button = widgets.Button(description="Start Search")
+
+# Display the input box and button
+display(query_box, search_button)
+
+# Function to get queries from the input box
+def get_queries_from_input():
+    queries = query_box.value.split("\n")
+    return queries
+
+# Function to get sentiment score using the Gemini (GenAI) API
+def gemini_analyze_sentiment(text):
+    try:
+        # Initialize the GenAI client with the provided API key
+        client = genai.Client(api_key=API_KEY)
+
+        # Request Gemini to return only the sentiment score (no explanations)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",  # Use the correct model for sentiment analysis
+            contents=f"Please analyze the sentiment of the following headline and return only the sentiment score between -10 (negative) and 10 (positive), no explanations or reasons: {text}",
+        )
+
+        # Extract only the sentiment score from the response and strip spaces
+        sentiment_score = response.text.strip()
+
+        # Ensure the sentiment score is a numeric value (float or int)
+        try:
+            sentiment_score = float(sentiment_score)
+        except ValueError:
+            sentiment_score = 0  # Default to 0 if the sentiment score cannot be converted to a number
+
+        print(f"Sentiment score for '{text}': {sentiment_score}")  # Debugging print
+
+        return sentiment_score
+    except Exception as e:
+        print(f"Error with Gemini API: {e}")
+        return 0  # Default to 0 if there's an error
+
+# Function to search for news articles related to a query using Google Custom Search API
+def search_news(query):
+    service = build("customsearch", "v1", developerKey=API_KEY)
+    try:
+        # Refine the query by replacing commas with 'AND' and adding quotes for exact phrase search
+        refined_query = f'"{" AND ".join([q.strip() for q in query.split(",")])}" site:news'
+
+        # Perform the search with the refined query
+        res = service.cse().list(q=refined_query, cx=CSE_ID, num=10).execute()
+        if 'items' in res:
+            news_articles = []
+            for item in res['items']:
+                # Filter out results that do not contain any of the keywords from the query
+                if any(keyword.lower() in item['title'].lower() for keyword in query.split(',')):
+                    news_articles.append({
+                        'title': item['title'],
+                        'link': item['link'],
+                        'snippet': item['snippet']
+                    })
+            return news_articles
+        else:
+            return []
+    except Exception as e:
+        print(f"Error with search: {e}")
+        return []
+
+# Function to analyze sentiment of headlines using Gemini (or other model)
+def analyze_sentiment_for_headlines(news_articles):
+    sentiment_results = []
+    for article in news_articles:
+        headline = article['title']
+        print(f"Analyzing sentiment for headline: {headline}")
+
+        # Get sentiment score from Gemini (or your language model)
+        sentiment_score = gemini_analyze_sentiment(headline)
+
+        print(f"Sentiment score for '{headline}': {sentiment_score}")  # Debugging print
+
+        # Append the result
+        sentiment_results.append({
+            'headline': headline,
+            'link': article['link'],
+            'sentiment_score': sentiment_score
+        })
+
+        time.sleep(random.randint(1, 2))  # Randomized delay to avoid detection
+
+    return sentiment_results
+
+# Function to process multiple queries
+def process_queries(queries):
+    results = []
+    for query in queries:
+        print(f"Searching for news related to: {query}")
+        news_articles = search_news(query)
+        results.append([query, news_articles])
+        time.sleep(random.randint(5, 10))  # Randomized delay to avoid detection
+    return results
+
+# Function to execute when the button is clicked
+def on_search_button_click(b):
+    print("Button clicked!")  # Debugging print
+
+    # Get queries from the input box
+    queries = get_queries_from_input()
+    print(f"Queries: {queries}")  # Debugging print
+
+    # Get the news results
+    results = process_queries(queries)
+    print(f"Results fetched: {len(results)} queries processed.")  # Debugging print
+
+    # Create a list to store all sentiment scores
+    all_sentiment_scores = []
+
+    for query, news_articles in results:
+        # Analyze sentiment for each headline in the results
+        sentiment_scores = analyze_sentiment_for_headlines(news_articles)
+        all_sentiment_scores.extend(sentiment_scores)
+
+    # Create a DataFrame from the sentiment scores
+    df = pd.DataFrame(all_sentiment_scores)
+
+    # Print out the collected sentiment results for debugging
+    print("Collected sentiment results:")
+    print(df)  # Print the DataFrame for debugging
+
+    # Check if the DataFrame is empty before calculating the average
+    if not df.empty:
+        # Calculate the average sentiment score directly from the DataFrame
+        average_sentiment_score = df['sentiment_score'].mean()
+        print(f"Average Sentiment Score: {average_sentiment_score:.2f}")  # Debugging print
+    else:
+        print("No sentiment scores collected. Unable to calculate average.")
+        average_sentiment_score = 0
+
+    # Create the visualization (bar chart)
+    if not df.empty:
+        plt.figure(figsize=(10, 6))
+        plt.bar(df.index, df['sentiment_score'], color='skyblue')
+        plt.xlabel('Headlines')
+        plt.ylabel('Sentiment Score')
+        plt.xticks(df.index, df['headline'], rotation=90, ha="right")
+        plt.title(f"Sentiment Analysis for Headlines\nAverage Sentiment: {average_sentiment_score:.2f}")
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("No data to display in chart.")
+
+# Link the button click event to the function
+search_button.on_click(on_search_button_click)

@@ -99,3 +99,14 @@ Closing:
 Sentigrade represents an exciting opportunity to transform how Southeast Asian businesses and political organizations understand and act on public sentiment. With an AI-driven, low-capital, and highly scalable platform, Sentigrade can tap into a rapidly growing market, delivering real-time insights that drive informed decision-making and improved reputation management. We aim to empower organizations in Southeast Asia to stay ahead of the curve by harnessing the power of public opinion and sentiment in the digital age.
 Let’s create a future where Southeast Asian organizations understand their public temperature in real-time and react proactively, boosting their reputation and shaping their strategies.
 
+cd SentimentSentinel
+python.exe -m pip install --upgrade pip
+pip install streamlit
+pip install flask
+pip install pandas
+pip install google-api-python-client
+pip install google-generativeai
+pip install nltk
+
+
+streamlit run app.py --server.address=127.0.0.1 --server.port=8501
